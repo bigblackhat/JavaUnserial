@@ -245,7 +245,7 @@ hashMap.put(url, com.alibaba.fastjson.JSON.class);
 否则IDEA会编译不通过。  
 5. 点击运行ScanClass#main()
 
-# URLDNS探测Class（强化版）
+# URLDNS探测Gatget（强化版）
 
 上面的思路很好，但还有几个问题：
 1. 如果要对大部分常见Gadget进行探测，岂不是要发很多请求，能否将所有请求合并到一起？
@@ -360,6 +360,10 @@ public class ScanClassOneForAll {
     }
 }
 ```
+
+效果如下：
+
+![](img/1.png)
 
 # 参考文献
 
