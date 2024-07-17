@@ -1,3 +1,8 @@
+.idea
+.DS_Store
+test/
+target/
+
 # Compiled class file
 *.class
 
