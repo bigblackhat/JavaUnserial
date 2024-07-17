@@ -10,11 +10,11 @@ import java.util.LinkedList;
 
 public class ScanClassOneForAll {
     public static void main(String[] args) throws Exception {
-        serial("JSON.ser");
-//        unserial("JSON.ser");
+//        serial("JSON.ser");
+        unserial("JSON.ser");
     }
 
-    public static String domain = "8gpi8frcfc1fyq3lsrh9cfnkyb43ss.burpcollaborator.net";
+    public static String domain = "yeau28.dnslog.cn";
 
     public static void serial(String file) throws Exception {
 
