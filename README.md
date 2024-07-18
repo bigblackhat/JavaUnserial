@@ -8,7 +8,7 @@
 
 Gadget清单：
 * ☑️ URLDNS
-* 🚩 CommonsCollections1
+* ☑️ CommonsCollections1
 * 🚩 CommonsCollections3
 * 🚩 CommonsCollections6
 * 🚩 TemplatesImpl
