@@ -7,8 +7,16 @@
 每一个链的文字描述都在对应项目下的README.md文件中。
 
 Gadget清单：
-* ☑️ URLDNS
-* ☑️ CommonsCollections1
+* ✅ URLDNS
+* ✅ CommonsCollections1
+* 🚩 CommonsCollections2
 * 🚩 CommonsCollections3
 * 🚩 CommonsCollections6
 * 🚩 TemplatesImpl
+* 🚩 Jdk7u21
+* 🚩 Jdk8u20
+* 🚩 CommonsBeanutils1
+* 🚩 C3P0
+
+Gadget备注：
+

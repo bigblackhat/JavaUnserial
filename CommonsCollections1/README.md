@@ -143,3 +143,6 @@ AnnotationInvocationHandler.readObject() -> LazyMap.entrySet -> invoke()
 
 需要注意的是，由于LazyMap已经被劫持了，因此后续的任何操作都会触发Gadget的执行，即使是在IDEA中调试，也会发现常常还没writeObject就已经弹计算器了。
 
+# 参考文献
+
+* P牛--Java安全漫谈
