@@ -9,7 +9,7 @@
 Gadget清单：
 * ✅ URLDNS
 * ✅ CommonsCollections1
-* ✅ JNDIForHighVersionJDKWithEL
+* ✅ JNDIForHighVersionJDKWithLocalFactory
 * 🚩 CommonsCollections2
 * 🚩 CommonsCollections3
 * 🚩 CommonsCollections6

