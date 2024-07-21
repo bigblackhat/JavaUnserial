@@ -10,6 +10,7 @@ Gadget清单：
 * ✅ URLDNS
 * ✅ CommonsCollections1
 * ✅ JNDIForHighVersionJDKWithLocalFactory
+* 🚩 JNDIForHighVersionJDKWithLDAPUnserial
 * 🚩 CommonsCollections2
 * 🚩 CommonsCollections3
 * 🚩 CommonsCollections6
@@ -19,5 +20,5 @@ Gadget清单：
 * 🚩 CommonsBeanutils1
 * 🚩 C3P0
 
-Gadget备注：
+<!-- Gadget备注： -->
 
