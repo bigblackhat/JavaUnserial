@@ -10,6 +10,7 @@ Gadget清单：
 * ✅ URLDNS
 * ✅ CommonsCollections1
 * ✅ JNDIForHighVersionJDKWithLocalFactory
+* ✅ C3P0
 * 🚩 JNDIForHighVersionJDKWithLDAPUnserial
 * 🚩 CommonsCollections2
 * 🚩 CommonsCollections3
@@ -18,7 +19,19 @@ Gadget清单：
 * 🚩 Jdk7u21
 * 🚩 Jdk8u20
 * 🚩 CommonsBeanutils1
-* 🚩 C3P0
 
-<!-- Gadget备注： -->
+<!-- Gadget备注：
+
+|Gadget|依赖版本|JDK版本|
+|-|-|-|
+|URLDNS|||
+|CommonsCollections1|Commons-Collections 3.1-3.2.1|JDK8u21以前|
+|CommonsCollections2|Commons-Collections 4.0||
+|CommonsCollections3|Commons-Collections 3.1-3.2.1|JDK8u21以前|
+|CommonsCollections4|Commons-Collections 4.0||
+|CommonsCollections5|Commons-Collections 3.1-3.2.1|JDK8u76以前，8u181也可以|
+|CommonsCollections6|Commons-Collections 3.1-3.2.1||
+|CommonsCollections7|Commons-Collections 3.1||
+|CommonsBeanutil1|Commons-Collections 3.1|| -->
+
 
