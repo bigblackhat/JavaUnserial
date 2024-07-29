@@ -541,3 +541,57 @@ hashSet.add(tmpl);
 ```
 
 具体代码见于：`GenJDK7U21.java`
+
+# 修复
+
+该链俗名Jdk7u21，因此在jdk1.7中，他可以在jdk7u21及以前使用。
+
+在P牛的《java安全漫谈》中，经他考据，jdk6u45及以前也可以使用该链，后续的版本应该是修复了。而jdk1.8全版本都不能使用该链。
+
+在github上，我们可以看到官方是如何修复漏洞的：https://github.com/openjdk/jdk7u/commit/b3dd6104b67d2a03b94a4a061f7a473bb0d2dc4e#/
+
+我们先不看修复，先回到jdk7u21链中HashSet的readObject方法：
+```java
+private void readObject(java.io.ObjectInputStream s) throws java.io.IOException,ClassNotFoundException {
+    .....
+
+    // Read in all elements in the proper order.
+    for (int i=0; i<size; i++) {
+        E e = (E) s.readObject(); // 看这里！！
+        map.put(e, PRESENT);
+    }
+}
+```
+由于我们在构造Gadget时，往HashSet中放了两个元素，分别是恶意TemplatesImpl对象和被代理的Templates，在上面的for循环中会分别对这两个元素进行readObject，由于Templates被代理了，因此势必会调用AnnotationInvocationHandler.readObject方法，我们来看下他是咋写的：
+
+```java
+private void readObject(ObjectInputStream var1) throws IOException, ClassNotFoundException {
+    var1.defaultReadObject();
+    AnnotationType var2 = null;
+
+    try {
+        var2 = AnnotationType.getInstance(this.type); // 看这里！！
+    } catch (IllegalArgumentException var9) {
+        return;
+    }
+    ....
+}
+```
+这里会检查this.type是不是Annotation类型，问题是在我们的Gadget中，this.type必须是Templates.class，这样在equalsImpl时才能调用TemplatesImpl.getOutputProperties方法，因此这里必定会报错：IllegalArgumentException，在上面的代码中可以看到，仅return了，并不影响后续代码执行。
+
+现在我们来看官方在jdk7u25中的修复，他选择在AnnotationInvocationHandler.readObject中检查this.type，如果不是Annotation类型，就直接抛出错误：
+```java
+try {
+    annotationType = AnnotationType.getInstance(type);
+} catch(IllegalArgumentException e) {
+    throw new java.io.InvalidObjectException("Non-annotation type in annotation serial stream");
+}
+```
+HashSet.readObject中并没有捕获这个错误，所以自然就直接中断程序了。
+
+从效果上来看，这确实阻断了jdk7u21，但如果某个类的readObject捕获了了错误并且什么都没做呢？这就引出了Jdk8u20，我们后续会展开讨论。
+
+----
+
+参考文献：
+* 《Java安全漫谈》
