@@ -13,14 +13,15 @@ Gadget清单：
 * ✅ CommonsCollections1
 * ✅ JNDIForHighVersionJDKWithLocalFactory
 * ✅ C3P0
-* ✅ Jdk7u21（内附TemplatesImpl）
+* ✅ Jdk7u21（内附：TemplatesImpl）
+* ✅ CommonsCollections6
 * 🚩 JNDIForHighVersionJDKWithLDAPUnserial
 * 🚩 CommonsCollections2
 * 🚩 CommonsCollections3
-* 🚩 CommonsCollections6
-* 🚩 TemplatesImpl
 * 🚩 Jdk8u20
 * 🚩 CommonsBeanutils1
+* 🚩 Groovy1
+* 🚩 FileUpload1
 
 
 Gadget备注：
@@ -28,9 +29,9 @@ Gadget备注：
 |Gadget|依赖版本|JDK版本|
 |:-|:-:|:-:|
 |URLDNS|-|-|
-|CommonsCollections1|Commons-Collections 3.1-3.2.1|JDK8u21以前|
+|CommonsCollections1|Commons-Collections 3.1-3.2.1|JDK8u71以前|
 |CommonsCollections2|Commons-Collections 4.0||
-|CommonsCollections3|Commons-Collections 3.1-3.2.1|JDK8u21以前|
+|CommonsCollections3|Commons-Collections 3.1-3.2.1|JDK8u71以前|
 |CommonsCollections4|Commons-Collections 4.0||
 |CommonsCollections5|Commons-Collections 3.1-3.2.1|JDK8u76以前，8u181也可以|
 |CommonsCollections6|Commons-Collections 3.1-3.2.1||
