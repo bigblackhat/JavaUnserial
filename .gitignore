@@ -2,6 +2,7 @@
 .DS_Store
 test/
 target/
+study.md
 
 # Compiled class file
 *.class

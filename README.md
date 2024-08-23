@@ -15,7 +15,7 @@ Gadget清单：
 * ✅ C3P0
 * ✅ Jdk7u21（内附：TemplatesImpl）
 * ✅ CommonsCollections6
-* 🚩 JNDIForHighVersionJDKWithLDAPUnserial
+* ✅ JNDIForHighVersionJDKWithLDAPUnserial
 * 🚩 CommonsCollections2
 * 🚩 CommonsCollections3
 * 🚩 Jdk8u20
